@@ -1,65 +1,67 @@
-use rand::thread_rng;
-use rand::Rng;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
-use reqwest::{Client, Error};
+use serde::Deserialize;
+use std::error::Error;
 
-#[derive(Debug, serde::Deserialize)]
-struct Item {
-    name: String,
+#[derive(Debug)]
+struct DnsResolver {
+    client: reqwest::Client,
 }
 
-struct ApiClient {
-    api_key: String,
-    client: Client,
-}
-
-impl ApiClient {
-    fn new(api_key: String) -> ApiClient {
-        let client = Client::new();
-        ApiClient { api_key, client }
+impl DnsResolver {
+    fn new() -> DnsResolver {
+        DnsResolver {
+            client: reqwest::Client::new(),
+        }
     }
 
-    async fn get_item_data(&self) -> Result<Vec<Item>, Error> {
-        let url = "https://api.boot.dev/v1/courses_rest_api/learn-http/items";
-        let mut headers = HeaderMap::new();
-        headers.insert("X-API-Key", HeaderValue::from_str(&self.api_key).unwrap());
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        let res = self
+    async fn resolve(&self, domain: &str) -> Result<Option<String>, Box<dyn Error>> {
+        let url = format!(
+            "https://cloudflare-dns.com/dns-query?name={}&type=A",
+            domain
+        );
+
+        let resp = self
             .client
-            .get(url)
-            .headers(headers)
+            .get(&url)
+            .header("accept", "application/dns-json")
             .send()
             .await?
-            .json::<Vec<Item>>()
+            .json::<DNSResponse>()
             .await?;
-        Ok(res)
-    }
+        let answer = resp.answer;
+        let ip_address = answer.iter().find_map(|r| {
+            if r.record_type == 1 {
+                Some(r.data.clone())
+            } else {
+                None
+            }
+        });
 
-    fn generate_key() -> String {
-        let characters: &[u8] = b"ABCDEF0123456789";
-        let mut rng = thread_rng();
-        let key: String = (0..16)
-            .map(|_| {
-                let idx = rng.gen_range(0..characters.len());
-                characters[idx] as char
-            })
-            .collect();
-        key
+        Ok(ip_address)
     }
+}
 
-    async fn log_items(&self) -> Result<(), Error> {
-        let items = self.get_item_data().await?;
-        for item in &items {
-            println!("{}", item.name);
-        }
-        Ok(())
-    }
+#[derive(Debug, Deserialize)]
+struct DNSRecord {
+    #[serde(rename = "type")]
+    record_type: u8,
+    data: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DNSResponse {
+    #[serde(rename = "Answer")]
+    answer: Vec<DNSRecord>,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = ApiClient::generate_key();
-    let client = ApiClient::new(api_key);
-    client.log_items().await?;
+async fn main() -> Result<(), Box<dyn Error>> {
+    let domain = "api.boot.dev";
+    let dns_resolver = DnsResolver::new();
+    let ip_address = dns_resolver.resolve(domain).await?;
+
+    match ip_address {
+        Some(ip) => println!("Found IP address for domain {}: {}", domain, ip),
+        None => println!("No IP address found for domain {}", domain),
+    }
     Ok(())
 }
