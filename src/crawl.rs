@@ -18,8 +18,12 @@ impl Crawler {
         }
     }
 
-    pub async fn crawl(&mut self, start_url: &str) -> Result<&mut HashMap<String, usize>, String> {
-        let mut urls_to_visit = vec![start_url.to_owned()];
+    pub async fn crawl(
+        &mut self,
+        start_url: &str,
+        max_depth: usize,
+    ) -> Result<&mut HashMap<String, usize>, String> {
+        let mut urls_to_visit = vec![(start_url.to_owned(), 0)];
         let client = Client::new();
         let base_url_obj = match Url::parse(&self.base_url) {
             Ok(url) => url,
@@ -42,7 +46,11 @@ impl Crawler {
             ));
         }
 
-        while let Some(current_url) = urls_to_visit.pop() {
+        while let Some((current_url, depth)) = urls_to_visit.pop() {
+            if depth > max_depth {
+                continue;
+            }
+
             let current_url_obj = match Url::parse(&current_url) {
                 Ok(url) => url,
                 Err(err) => {
@@ -106,7 +114,7 @@ impl Crawler {
             let next_urls = self.get_urls_from_html(&html_body, &self.base_url);
             for next_url in next_urls {
                 if !self.visited_pages.contains_key(&next_url) {
-                    urls_to_visit.push(next_url);
+                    urls_to_visit.push((next_url, depth + 1));
                 }
             }
         }

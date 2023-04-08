@@ -23,7 +23,7 @@ async fn main() {
 
     let mut crawler = Crawler::new(base_url);
 
-    let result = crawler.crawl(base_url).await;
+    let result = crawler.crawl(base_url, 5).await;
 
     match result {
         Ok(pages) => print_report(&pages),
