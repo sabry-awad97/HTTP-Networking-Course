@@ -25,6 +25,22 @@ impl Crawler {
             Ok(url) => url,
             Err(err) => return Err(format!("Error parsing base URL: {}", err)),
         };
+        let start_resp = match client.get(start_url).send().await {
+            Ok(resp) => resp,
+            Err(err) => {
+                return Err(format!(
+                    "Error sending HTTP request to {}: {}",
+                    start_url, err
+                ))
+            }
+        };
+        if start_resp.status().is_client_error() || start_resp.status().is_server_error() {
+            return Err(format!(
+                "Error: {} returned status code {}",
+                start_url,
+                start_resp.status()
+            ));
+        }
 
         while let Some(current_url) = urls_to_visit.pop() {
             let current_url_obj = match Url::parse(&current_url) {
