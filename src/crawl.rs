@@ -18,25 +18,31 @@ impl Crawler {
         }
     }
 
-    pub async fn crawl(&mut self, start_url: &str) -> &mut HashMap<String, usize> {
+    pub async fn crawl(&mut self, start_url: &str) -> Result<&mut HashMap<String, usize>, String> {
         let mut urls_to_visit = vec![start_url.to_owned()];
         let client = Client::new();
         let base_url_obj = match Url::parse(&self.base_url) {
             Ok(url) => url,
-            Err(_) => return &mut self.visited_pages,
+            Err(err) => return Err(format!("Error parsing base URL: {}", err)),
         };
 
         while let Some(current_url) = urls_to_visit.pop() {
             let current_url_obj = match Url::parse(&current_url) {
                 Ok(url) => url,
-                Err(_) => continue,
+                Err(err) => {
+                    println!("Error parsing URL {}: {}", current_url, err);
+                    continue;
+                }
             };
             if current_url_obj.host_str() != base_url_obj.host_str() {
                 continue;
             }
             let normalized_url = match self.normalize_url(&current_url) {
                 Some(url) => url,
-                None => continue,
+                None => {
+                    println!("Error normalizing URL {}", current_url);
+                    continue;
+                }
             };
             if let Some(count) = self.visited_pages.get_mut(&normalized_url) {
                 *count += 1;
@@ -47,24 +53,37 @@ impl Crawler {
             let resp = match client.get(&current_url).send().await {
                 Ok(resp) => resp,
                 Err(err) => {
-                    println!("{}", err);
+                    println!("Error sending HTTP request to {}: {}", current_url, err);
                     continue;
                 }
             };
-            let content_type = resp
-                .headers()
-                .get("content-type")
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("");
+            let content_type = match resp.headers().get("content-type") {
+                Some(value) => match value.to_str() {
+                    Ok(s) => s,
+                    Err(err) => {
+                        return Err(format!(
+                            "Error converting content-type header to string: {}",
+                            err
+                        ))
+                    }
+                },
+                None => {
+                    println!("No content-type header in response from {}", current_url);
+                    continue;
+                }
+            };
             if !content_type.contains("text/html") {
-                println!("Got non-html response: {}", content_type);
+                println!(
+                    "Got non-html response from {}: {}",
+                    current_url, content_type
+                );
                 continue;
             }
 
             let html_body = match resp.text().await {
                 Ok(body) => body,
                 Err(err) => {
-                    println!("{}", err);
+                    println!("Error reading response body from {}: {}", current_url, err);
                     continue;
                 }
             };
@@ -75,12 +94,24 @@ impl Crawler {
                 }
             }
         }
-        &mut self.visited_pages
+        Ok(&mut self.visited_pages)
     }
 
     fn normalize_url(&self, url: &str) -> Option<String> {
-        let parsed_url = Url::parse(url).ok()?;
-        let host = parsed_url.host_str()?.to_lowercase();
+        let parsed_url = match Url::parse(url) {
+            Ok(url) => url,
+            Err(err) => {
+                println!("Error parsing URL {}: {}", url, err);
+                return None;
+            }
+        };
+        let host = match parsed_url.host_str() {
+            Some(host) => host.to_lowercase(),
+            None => {
+                println!("No host in URL {}", url);
+                return None;
+            }
+        };
         let path = parsed_url.path().trim_end_matches('/').to_lowercase();
         Some(format!("{}{}", host, path))
     }

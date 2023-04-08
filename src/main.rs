@@ -1,5 +1,6 @@
 use crawl::Crawler;
 use report::print_report;
+use std::process;
 
 mod crawl;
 mod report;
@@ -22,9 +23,15 @@ async fn main() {
 
     let mut crawler = Crawler::new(base_url);
 
-    let pages = crawler.crawl(base_url).await;
+    let result = crawler.crawl(base_url).await;
 
-    print_report(&pages);
+    match result {
+        Ok(pages) => print_report(&pages),
+        Err(err) => {
+            eprintln!("Crawler failed: {:?}", err);
+            process::exit(1);
+        }
+    }
 }
 
 // http://wagslane.dev/sitemap.xml
