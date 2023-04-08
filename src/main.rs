@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use crawl::crawl_page;
+use crawl::Crawler;
 use report::print_report;
 
 mod crawl;
@@ -22,7 +20,9 @@ async fn main() {
 
     println!("starting crawl of: {}...", base_url);
 
-    let pages = crawl_page(base_url, base_url, HashMap::new()).await;
+    let mut crawler = Crawler::new(base_url);
+
+    let pages = crawler.crawl(base_url).await;
 
     print_report(&pages);
 }
