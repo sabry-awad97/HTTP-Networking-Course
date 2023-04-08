@@ -18,3 +18,4 @@ serde_urlencoded = "0.7.1"
 tokio = { version = "1.27.0", features = ["full"] }
 url = "2.3.1"
 async-recursion = "1.0.4"
+prettytable-rs = "0.10.0"

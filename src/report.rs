@@ -1,3 +1,4 @@
+use prettytable::{color, format::consts::FORMAT_BOX_CHARS, Attr, Cell, Row, Table};
 use std::collections::HashMap;
 
 pub fn sort_pages(pages: &HashMap<String, usize>) -> Vec<(String, usize)> {
@@ -10,10 +11,24 @@ pub fn print_report(pages: &HashMap<String, usize>) {
     println!("==========");
     println!("REPORT");
     println!("==========");
+
     let sorted_pages = sort_pages(pages);
+
+    let mut table = Table::new();
+    table.set_format(*FORMAT_BOX_CHARS);
+    table.add_row(Row::new(vec![
+        Cell::new("URL").with_style(Attr::ForegroundColor(color::CYAN)),
+        Cell::new("Internal Links").with_style(Attr::ForegroundColor(color::CYAN)),
+    ]));
+
     for (url, count) in sorted_pages {
-        println!("Found {} internal links to {}", count, url);
+        table.add_row(Row::new(vec![
+            Cell::new(&url).with_style(Attr::ForegroundColor(color::YELLOW)),
+            Cell::new(&count.to_string()).with_style(Attr::ForegroundColor(color::GREEN)),
+        ]));
     }
+
+    table.printstd();
 }
 
 #[cfg(test)]
