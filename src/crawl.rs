@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
-use async_recursion::async_recursion;
 use reqwest::Client;
+use std::collections::HashMap;
 use url::Url;
 
 use select::document::Document;
@@ -20,72 +18,77 @@ impl Crawler {
         }
     }
 
-    #[async_recursion]
-    pub async fn crawl(&mut self, current_url: &str) -> &mut HashMap<String, usize> {
-        // if this is an offsite URL, bail immediately
-        let current_url_obj = match Url::parse(current_url) {
-            Ok(url) => url,
-            Err(_) => return &mut self.visited_pages,
-        };
-        let base_url_obj = match Url::parse(&self.base_url) {
-            Ok(url) => url,
-            Err(_) => return &mut self.visited_pages,
-        };
-        if current_url_obj.host_str() != base_url_obj.host_str() {
-            return &mut self.visited_pages;
-        }
+    pub async fn crawl(&mut self, start_url: &str) -> &mut HashMap<String, usize> {
+        let mut urls_to_visit = vec![start_url.to_owned()];
 
-        // normalize the URL
-        let normalized_url = match self.normalize_url(current_url) {
-            Some(url) => url,
-            None => return &mut self.visited_pages,
-        };
-
-        // if we've already visited this page
-        // just increase the count and don't repeat
-        // the http request
-        if let Some(count) = self.visited_pages.get_mut(&normalized_url) {
-            *count += 1;
-            return &mut self.visited_pages;
-        }
-
-        // initialize this page in the map
-        // since it doesn't exist yet
-        self.visited_pages.insert(normalized_url.clone(), 1);
-
-        // fetch and parse the html of the currentURL
-        println!("crawling {}", current_url);
-        let resp = match Client::new().get(current_url).send().await {
-            Ok(resp) => resp,
-            Err(err) => {
-                println!("{}", err);
-                return &mut self.visited_pages;
+        while let Some(current_url) = urls_to_visit.pop() {
+            // if this is an offsite URL, skip it
+            let current_url_obj = match Url::parse(&current_url) {
+                Ok(url) => url,
+                Err(_) => continue,
+            };
+            let base_url_obj = match Url::parse(&self.base_url) {
+                Ok(url) => url,
+                Err(_) => continue,
+            };
+            if current_url_obj.host_str() != base_url_obj.host_str() {
+                continue;
             }
-        };
-        if resp.status().is_client_error() || resp.status().is_server_error() {
-            println!("Got HTTP error, status code: {}", resp.status());
-            return &mut self.visited_pages;
-        }
-        let content_type = resp
-            .headers()
-            .get("content-type")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("");
-        if !content_type.contains("text/html") {
-            println!("Got non-html response: {}", content_type);
-            return &mut self.visited_pages;
-        }
-        let html_body = match resp.text().await {
-            Ok(body) => body,
-            Err(err) => {
-                println!("{}", err);
-                return &mut self.visited_pages;
-            }
-        };
 
-        let next_urls = self.get_urls_from_html(&html_body, &self.base_url);
-        for next_url in next_urls {
-            self.crawl(&next_url).await;
+            // normalize the URL
+            let normalized_url = match self.normalize_url(&current_url) {
+                Some(url) => url,
+                None => continue,
+            };
+
+            // if we've already visited this page
+            // just increase the count and don't repeat
+            // the http request
+            if let Some(count) = self.visited_pages.get_mut(&normalized_url) {
+                *count += 1;
+                continue;
+            }
+
+            // initialize this page in the map
+            // since it doesn't exist yet
+            self.visited_pages.insert(normalized_url.clone(), 1);
+
+            // fetch and parse the html of the currentURL
+            println!("crawling {}", current_url);
+            let resp = match Client::new().get(&current_url).send().await {
+                Ok(resp) => resp,
+                Err(err) => {
+                    println!("{}", err);
+                    continue;
+                }
+            };
+            if resp.status().is_client_error() || resp.status().is_server_error() {
+                println!("Got HTTP error, status code: {}", resp.status());
+                continue;
+            }
+            let content_type = resp
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("");
+            if !content_type.contains("text/html") {
+                println!("Got non-html response: {}", content_type);
+                continue;
+            }
+            let html_body = match resp.text().await {
+                Ok(body) => body,
+                Err(err) => {
+                    println!("{}", err);
+                    continue;
+                }
+            };
+
+            let next_urls = self.get_urls_from_html(&html_body, &self.base_url);
+            for next_url in next_urls {
+                if !self.visited_pages.contains_key(&next_url) {
+                    urls_to_visit.push(next_url);
+                }
+            }
         }
 
         &mut self.visited_pages
