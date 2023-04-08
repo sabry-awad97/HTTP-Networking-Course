@@ -1,20 +1,30 @@
-use std::error::Error;
+use std::collections::HashMap;
 
-use url::Url;
+use crawl::crawl_page;
+use report::print_report;
 
-fn get_port_number(url: &str) -> Option<u16> {
-    let parsed_url = Url::parse(url).ok()?;
-    let port = match parsed_url.port_or_known_default() {
-        Some(port) => port,
-        None => return None,
-    };
-    Some(port)
+mod crawl;
+mod report;
+
+#[tokio::main]
+async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        println!("no website provided");
+        return;
+    }
+    if args.len() > 2 {
+        println!("too many arguments provided");
+        return;
+    }
+
+    let base_url = &args[1];
+
+    println!("starting crawl of: {}...", base_url);
+
+    let pages = crawl_page(base_url, base_url, HashMap::new()).await;
+
+    print_report(&pages);
 }
-fn set_port_number(url: &str, port: u16) -> Result<String, Box<dyn Error>> {
-    let mut parsed_url = Url::parse(url)?;
-    parsed_url
-        .set_port(Some(port))
-        .map_err(|_| "cannot be base")?;
-    Ok(parsed_url.to_string())
-}
-fn main() {}
+
+// http://wagslane.dev/sitemap.xml
