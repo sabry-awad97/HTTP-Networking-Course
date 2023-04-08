@@ -1,18 +1,43 @@
 use prettytable::{color, format::consts::FORMAT_BOX_CHARS, Attr, Cell, Row, Table};
-use std::collections::HashMap;
+use std::{collections::HashMap, error::Error, io::Write};
 
-pub fn sort_pages(pages: &HashMap<String, usize>) -> Vec<(String, usize)> {
-    let mut pages_vec: Vec<(String, usize)> = pages.iter().map(|(k, v)| (k.clone(), *v)).collect();
-    pages_vec.sort_by_key(|&(_, v)| std::cmp::Reverse(v));
-    pages_vec
+pub enum SortOrder {
+    Ascending,
+    Descending,
 }
 
-pub fn print_report(pages: &HashMap<String, usize>) {
-    println!("==========");
-    println!("REPORT");
-    println!("==========");
+pub fn sort_pages(
+    pages: &HashMap<String, usize>,
+    order: SortOrder,
+    filter: impl Fn(&String, &usize) -> bool,
+) -> Vec<(String, usize)> {
+    let mut filtered_pages: Vec<(String, usize)> = pages
+        .iter()
+        .filter(|(k, v)| filter(k, v))
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
 
-    let sorted_pages = sort_pages(pages);
+    match order {
+        SortOrder::Ascending => filtered_pages.sort_by(|a, b| a.1.cmp(&b.1)),
+        SortOrder::Descending => filtered_pages.sort_by(|a, b| b.1.cmp(&a.1)),
+    }
+
+    filtered_pages
+}
+
+pub fn print_report(
+    pages: &HashMap<String, usize>,
+    writer: &mut impl Write,
+) -> Result<(), Box<dyn Error>> {
+    if pages.is_empty() {
+        return Err("No pages found".into());
+    }
+
+    writeln!(writer, "==========")?;
+    writeln!(writer, "REPORT")?;
+    writeln!(writer, "==========")?;
+
+    let sorted_pages = sort_pages(pages, SortOrder::Ascending, |_, _| true);
 
     let mut table = Table::new();
     table.set_format(*FORMAT_BOX_CHARS);
@@ -28,7 +53,9 @@ pub fn print_report(pages: &HashMap<String, usize>) {
         ]));
     }
 
-    table.printstd();
+    table.print(writer)?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -45,7 +72,7 @@ mod tests {
             "url4".to_string() => 10,
             "url5".to_string() => 7,
         };
-        let actual = sort_pages(&input);
+        let actual = sort_pages(&input, SortOrder::Descending, |_, _| true);
         let expected = vec![
             ("url4".to_string(), 10),
             ("url5".to_string(), 7),
@@ -59,7 +86,7 @@ mod tests {
     #[test]
     fn test_sort_pages_null_case() {
         let input = hashmap! {};
-        let actual = sort_pages(&input);
+        let actual = sort_pages(&input, SortOrder::Descending, |_, _| true);
         let expected = vec![];
         assert_eq!(actual, expected);
     }
