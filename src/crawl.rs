@@ -20,52 +20,37 @@ impl Crawler {
 
     pub async fn crawl(&mut self, start_url: &str) -> &mut HashMap<String, usize> {
         let mut urls_to_visit = vec![start_url.to_owned()];
+        let client = Client::new();
+        let base_url_obj = match Url::parse(&self.base_url) {
+            Ok(url) => url,
+            Err(_) => return &mut self.visited_pages,
+        };
 
         while let Some(current_url) = urls_to_visit.pop() {
-            // if this is an offsite URL, skip it
             let current_url_obj = match Url::parse(&current_url) {
-                Ok(url) => url,
-                Err(_) => continue,
-            };
-            let base_url_obj = match Url::parse(&self.base_url) {
                 Ok(url) => url,
                 Err(_) => continue,
             };
             if current_url_obj.host_str() != base_url_obj.host_str() {
                 continue;
             }
-
-            // normalize the URL
             let normalized_url = match self.normalize_url(&current_url) {
                 Some(url) => url,
                 None => continue,
             };
-
-            // if we've already visited this page
-            // just increase the count and don't repeat
-            // the http request
             if let Some(count) = self.visited_pages.get_mut(&normalized_url) {
                 *count += 1;
                 continue;
             }
-
-            // initialize this page in the map
-            // since it doesn't exist yet
             self.visited_pages.insert(normalized_url.clone(), 1);
-
-            // fetch and parse the html of the currentURL
-            println!("crawling {}", current_url);
-            let resp = match Client::new().get(&current_url).send().await {
+            println!("Crawling: {}", current_url);
+            let resp = match client.get(&current_url).send().await {
                 Ok(resp) => resp,
                 Err(err) => {
                     println!("{}", err);
                     continue;
                 }
             };
-            if resp.status().is_client_error() || resp.status().is_server_error() {
-                println!("Got HTTP error, status code: {}", resp.status());
-                continue;
-            }
             let content_type = resp
                 .headers()
                 .get("content-type")
@@ -75,6 +60,7 @@ impl Crawler {
                 println!("Got non-html response: {}", content_type);
                 continue;
             }
+
             let html_body = match resp.text().await {
                 Ok(body) => body,
                 Err(err) => {
@@ -82,7 +68,6 @@ impl Crawler {
                     continue;
                 }
             };
-
             let next_urls = self.get_urls_from_html(&html_body, &self.base_url);
             for next_url in next_urls {
                 if !self.visited_pages.contains_key(&next_url) {
@@ -90,7 +75,6 @@ impl Crawler {
                 }
             }
         }
-
         &mut self.visited_pages
     }
 
